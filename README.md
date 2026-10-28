@@ -13,7 +13,9 @@ change environmental conditions and run experiments to see how populations evolv
 
 - A working ecosystem: organisms see food, move toward it, eat it, and starve without it
 - Reproduction with inheritance and mutation, so trait averages change over generations
-- A configurable population cap, mutation probability, and mutation strength
+- Adjustable experiment settings (food, energy costs, mutation, population) from the command line
+- Six ready-made experiments, and a headless mode that prints results without opening a window
+- Repeat any run exactly (same seed and settings), or reset with a new random seed
 - Pygame visuals for organisms and food, with pause, fast-forward, vision circles, and restart
 - A `Simulation` class kept separate from the graphics code, so it can be tested without a window
 - An `Organism` class with a unique ID, position, energy, age, alive/dead status, and three traits
@@ -29,6 +31,8 @@ EvoExperiment/
 │   └── evoexperiment/
 │       ├── __init__.py      # Package marker and version
 │       ├── main.py          # Window, keyboard input, and the main loop
+│       ├── cli.py           # Command-line options and headless runs (no Pygame)
+│       ├── experiment.py    # ExperimentConfig, presets, and validation (no Pygame)
 │       ├── renderer.py      # Pygame drawing functions (reads the simulation, never changes it)
 │       ├── settings.py      # All tunable numbers: window, traits, food, energy costs
 │       ├── organism.py      # The Organism class and its movement (no Pygame)
@@ -39,6 +43,7 @@ EvoExperiment/
 │   ├── test_organism.py     # Organism creation, traits, energy, aging, movement, boundaries
 │   ├── test_ecosystem.py    # Eating, energy costs, death, boundaries, reproducibility
 │   ├── test_reproduction.py # Reproduction, inheritance, mutation, IDs, generations, population cap
+│   ├── test_experiment.py   # Experiment settings, validation, reset, repeatability, command line
 │   └── test_simulation.py   # Simulation setup and seeds
 ├── pytest.ini               # Tells pytest where to find the code
 ├── requirements.txt
@@ -74,6 +79,13 @@ PYTHONPATH=src python3 -m evoexperiment.main
 $env:PYTHONPATH="src"; python -m evoexperiment.main
 ```
 
+To pick an experiment or change settings, add options (see [Experiments](#experiments)):
+
+```bash
+PYTHONPATH=src python3 -m evoexperiment.main --experiment scarce_food --seed 7
+PYTHONPATH=src python3 -m evoexperiment.main --help    # list every option
+```
+
 ### Controls
 
 | Key   | Action                                                  |
@@ -81,15 +93,20 @@ $env:PYTHONPATH="src"; python -m evoexperiment.main
 | Space | Pause or resume                                         |
 | F     | Fast-forward (20 steps per frame) on or off             |
 | V     | Show or hide each organism's vision range               |
-| R     | Restart with the same seed (plays out exactly the same) |
+| R     | Repeat the run: same seed and settings, plays out exactly the same |
+| N     | New run: same settings, new random seed                 |
+| 1–6   | Switch experiment (keeps the current seed): 1 default, 2 scarce food, 3 abundant food, 4 high mutation, 5 no mutation, 6 high energy cost |
 | Esc   | Quit                                                    |
+
+Every time a run starts, its full settings (including the seed) are printed in the terminal,
+so you can always repeat it later.
 
 ### What you'll see
 
 - **Green dots** are food.
 - **Circles** are organisms. The short line shows which way each one is heading.
 - Organism color shows energy: **blue** = full, **red** = nearly starving.
-- The text in the top-left shows the step number, seed, population, food, births, deaths,
+- The text in the top-left shows the experiment name, seed, step number, population, food, births, deaths,
   the highest generation reached, and the **average of each trait** next to its starting value.
 
 See [How to Observe Evolution](#how-to-observe-evolution) for what to look for.
@@ -292,17 +309,17 @@ The population settles at around 30–40 organisms. That number is set by how mu
 not by `MAX_POPULATION`. Seeds 1, 7, and 2024 show the same pattern: speed and efficiency rise
 toward the top of their ranges.
 
-To see the effect of the environment, change a setting in `settings.py` and run again. For
-example, lower `FOOD_SPAWN_CHANCE` to make food scarcer, or raise `MOVE_ENERGY_COST` to make
-moving more expensive.
+To see how the environment changes evolution, try the [Experiments](#experiments) below.
 
 ### Limitations of this simplified model
 
 This is a teaching model, not a realistic one. Some important simplifications:
 
 - **Few trade-offs.** Higher efficiency has no downside, and vision costs nothing, so those traits
-  simply rise toward their maximum. In nature, most advantages come with a cost. Speed is the only
-  trait with a built-in cost: moving faster uses more energy.
+  simply rise toward their maximum. In nature, most advantages come with a cost. Speed has only a
+  small cost: movement is charged per unit of distance, so a fast organism pays the same as a slow
+  one to reach the same food. It only pays extra while wandering, because it covers more ground
+  each step. That's why even a high `--move-energy-cost` doesn't make organisms evolve to be slower.
 - **Hard trait limits.** Traits can't evolve past the ranges in `settings.py`, so populations
   often pile up at the upper limit instead of finding a natural balance.
 - **Asexual reproduction only.** There is one parent and no mixing of traits between two
@@ -316,6 +333,126 @@ This is a teaching model, not a realistic one. Some important simplifications:
 - **Small populations.** With only about 35 organisms, random luck (genetic drift) can matter as
   much as selection. Different seeds can give somewhat different results, so compare several
   seeds before drawing conclusions.
+
+## Experiments
+
+Experiment settings live in `src/evoexperiment/experiment.py`, separate from the simulation
+rules. An `ExperimentConfig` holds the settings below, checks that they are valid, and builds a
+`Simulation` from them. Any setting you don't change uses its default from `settings.py`.
+
+### Settings
+
+| Setting                | Command-line option        | Default | Allowed values | What it does |
+|------------------------|----------------------------|---------|----------------|--------------|
+| `seed`                 | `--seed` / `--random-seed` | 42      | whole number ≥ 0 | Controls every random choice. Same seed + same settings = same run. |
+| `population_size`      | `--population`             | 20      | whole number ≥ 1 | How many organisms the experiment starts with. |
+| `max_population`       | `--max-population`         | 150     | whole number ≥ `population_size` | Organisms can't reproduce while this many are alive. |
+| `initial_food_count`   | `--initial-food`           | 40      | whole number ≥ 0 | Food placed at the start. |
+| `max_food`             | `--max-food`               | 80      | whole number ≥ 0 | No new food appears while this much exists. |
+| `food_spawn_chance`    | `--food-spawn-chance`      | 0.3     | 0 to 1         | **Food spawn rate:** chance that one new food appears each step (0.3 ≈ 18 per second). |
+| `food_energy`          | `--food-energy`            | 30      | > 0            | Energy an organism gains from one food. |
+| `base_energy_cost`     | `--base-energy-cost`       | 0.1     | ≥ 0            | **Energy consumption:** energy used every step just to stay alive. |
+| `move_energy_cost`     | `--move-energy-cost`       | 0.08    | ≥ 0            | **Energy consumption:** extra energy used per unit of distance moved. |
+| `mutation_probability` | `--mutation-probability`   | 0.2     | 0 to 1         | Chance that each trait mutates in a newborn. |
+| `mutation_strength`    | `--mutation-strength`      | 0.1     | ≥ 0            | Typical size of a mutation, as a fraction of the trait's range. |
+
+Both energy costs are divided by each organism's energy efficiency. Invalid values are rejected
+with a message listing every problem, for example:
+
+```
+error: Invalid experiment settings:
+  - food_spawn_chance must be a number from 0 to 1, got 2.0
+```
+
+### Ready-made experiments
+
+| Key | `--experiment`     | What it changes |
+|-----|--------------------|-----------------|
+| 1   | `default`          | Nothing. All settings come from `settings.py`. |
+| 2   | `scarce_food`      | Food appears 0.12 per step (instead of 0.3), with at most 30 at once. |
+| 3   | `abundant_food`    | Food appears every step, with up to 150 at once. |
+| 4   | `high_mutation`    | Mutation probability 0.8 and strength 0.3. |
+| 5   | `no_mutation`      | Mutation probability 0. |
+| 6   | `high_energy_cost` | Base energy cost 0.25 per step (instead of 0.1). |
+
+You can start from a preset and change individual settings:
+
+```bash
+PYTHONPATH=src python3 -m evoexperiment.main --experiment scarce_food --food-energy 50
+```
+
+### Suggested experiments
+
+Each experiment below compares one setting against the default. The **headless** commands run
+without a window and print the settings and results, which makes comparing runs quick. The
+results below are from 15,000 steps with seeds 1, 42, and 7.
+
+**1. Scarce food: does hunger favor better senses?**
+
+```bash
+PYTHONPATH=src python3 -m evoexperiment.main --experiment default     --seed 1 --headless --steps 15000
+PYTHONPATH=src python3 -m evoexperiment.main --experiment scarce_food --seed 1 --headless --steps 15000
+```
+
+With scarce food, the population drops from about 34 to 11–19, and average vision ends higher
+(104–125 instead of 98–111). When food is rare, seeing it from farther away matters more.
+
+**2. Abundant food: what happens when survival is easy?**
+
+```bash
+PYTHONPATH=src python3 -m evoexperiment.main --experiment abundant_food --seed 1 --headless --steps 15000
+```
+
+The population grows to 112–123, and average vision **falls** from about 80 to 59–69. With food
+everywhere, long vision gives little advantage, so mutations that reduce it are no longer weeded
+out. Selection only maintains a trait while that trait is useful.
+
+**3. High mutation vs. no mutation: where does variation come from?**
+
+```bash
+PYTHONPATH=src python3 -m evoexperiment.main --experiment high_mutation --seed 1 --headless --steps 15000
+PYTHONPATH=src python3 -m evoexperiment.main --experiment no_mutation   --seed 1 --headless --steps 15000
+```
+
+With no mutation, traits can never go beyond the best starting organism. Average speed stalls at
+2.4–2.75, compared with about 2.95 by default. With high mutation, newborns differ more from
+their parents. Vision climbs higher (110–126), but more offspring are also born with worse traits.
+
+**4. High energy cost: does a harsher world reward efficiency?**
+
+```bash
+PYTHONPATH=src python3 -m evoexperiment.main --experiment high_energy_cost --seed 1 --headless --steps 15000
+```
+
+The population settles lower (23–26), and energy efficiency reaches its maximum (1.47–1.50) on
+every seed.
+
+**Tips for fair comparisons**
+
+- Change **one setting at a time** and keep the seed the same.
+- Then repeat with a few different seeds (`--seed 1`, `--seed 2`, ...). With small populations,
+  luck plays a big role, so a pattern only counts if it shows up across several seeds.
+- To watch an experiment instead, drop `--headless` and press **F** to fast-forward.
+
+### Repeating and resetting experiments
+
+- **Repeat exactly:** run the same command again, or press **R** in the app. The same seed and
+  settings always give the same result at every step.
+- **New random seed:** press **N** in the app, or use `--random-seed`. The chosen seed is printed
+  in the terminal and shown on screen, so that run can be repeated later with `--seed`.
+
+You can do the same in Python:
+
+```python
+from evoexperiment.experiment import ExperimentConfig, make_preset, run_experiment
+
+config = ExperimentConfig(seed=7, food_spawn_chance=0.1, mutation_probability=0.5)
+print(run_experiment(config, steps=5000))    # same result every time
+
+scarce = make_preset("scarce_food", seed=7)
+other_seed = scarce.with_new_seed()          # same settings, new seed
+richer = scarce.copy_with(food_energy=50)    # change one setting
+```
 
 ## Reproducible Experiments
 
@@ -349,5 +486,5 @@ The app's default seed and population size are set in `src/evoexperiment/setting
 - [x] Food and energy
 - [x] Reproduction and inherited traits
 - [x] Mutation over generations
+- [x] Adjustable environmental conditions for experiments
 - [ ] Population charts with Matplotlib
-- [ ] Adjustable environmental conditions for experiments

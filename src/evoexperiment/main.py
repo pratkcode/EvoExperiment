@@ -2,39 +2,50 @@
 Entry point for EvoExperiment.
 
 Opens a Pygame window and runs the ecosystem. This file only handles the
-window, keyboard input, and the main loop. The rules are in simulation.py
-and the drawing is in renderer.py.
+window, keyboard input, and the main loop. The rules are in simulation.py,
+the experiment settings are in experiment.py, command-line options are in
+cli.py, and the drawing is in renderer.py.
 
 Run it from the project folder with:  python -m evoexperiment.main
-(see README.md for the full command).
+Add --help to see every option (see README.md for the full command).
 """
 
-import pygame
+import os
+import sys
+import warnings
+
+# Keep the terminal output clean: hide Pygame's welcome message and a
+# warning that comes from inside Pygame itself (not from this project).
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
+
+import pygame  # noqa: E402  (must come after the lines above)
 
 from evoexperiment import settings
+from evoexperiment.cli import build_parser, config_from_arguments, run_headless
+from evoexperiment.experiment import PRESET_NAMES, make_preset
 from evoexperiment.renderer import draw_world
-from evoexperiment.simulation import Simulation
+
+# Number keys 1-6 switch to these presets, in this order.
+PRESET_KEYS = [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6]
 
 
-def create_simulation():
-    """Create a new simulation using the values in settings.py."""
-    return Simulation(
-        seed=settings.DEFAULT_SEED,
-        population_size=settings.DEFAULT_POPULATION_SIZE,
-        world_width=settings.WINDOW_WIDTH,
-        world_height=settings.WINDOW_HEIGHT,
-    )
+def start_experiment(config):
+    """Print the settings (so the run can be repeated) and build the simulation."""
+    print()
+    print(config.describe())
+    return config.create_simulation()
 
 
-def main():
-    """Set up Pygame, run the main loop, and clean up when done."""
+def run_window(config):
+    """Open the window and run the experiment until the user quits."""
     pygame.init()
     screen = pygame.display.set_mode((settings.WINDOW_WIDTH, settings.WINDOW_HEIGHT))
     pygame.display.set_caption(settings.WINDOW_TITLE)
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 24)  # None = Pygame's default font
 
-    simulation = create_simulation()
+    simulation = start_experiment(config)
     paused = False
     show_vision = False
     steps_per_frame = 1  # Press F to switch between normal and fast-forward
@@ -58,8 +69,18 @@ def main():
                     else:
                         steps_per_frame = 1
                 elif event.key == pygame.K_r:
-                    # Same seed, so the restart plays out exactly the same way.
-                    simulation = create_simulation()
+                    # Repeat: same seed and settings, so it plays out exactly the same way.
+                    simulation = start_experiment(config)
+                elif event.key == pygame.K_n:
+                    # New run: same settings, different random seed.
+                    config = config.with_new_seed()
+                    simulation = start_experiment(config)
+                elif event.key in PRESET_KEYS:
+                    # Switch to a ready-made experiment, keeping the current seed.
+                    index = PRESET_KEYS.index(event.key)
+                    if index < len(PRESET_NAMES):
+                        config = make_preset(PRESET_NAMES[index], seed=config.seed)
+                        simulation = start_experiment(config)
 
         # 2. Update the simulation. Fast-forward runs several steps per frame.
         #    The results are identical either way; only the drawing is skipped.
@@ -68,7 +89,7 @@ def main():
                 simulation.step()
 
         # 3. Draw everything.
-        draw_world(screen, font, simulation, show_vision, paused, steps_per_frame)
+        draw_world(screen, font, simulation, show_vision, paused, steps_per_frame, config.name)
         pygame.display.flip()
 
         # 4. Limit the frame rate.
@@ -77,5 +98,21 @@ def main():
     pygame.quit()
 
 
+def main(argv=None):
+    """Read the command-line options, then run with or without a window."""
+    parser = build_parser()
+    arguments = parser.parse_args(argv)
+
+    try:
+        config = config_from_arguments(arguments)
+    except ValueError as error:
+        parser.error(str(error))  # Prints the message and exits
+
+    if arguments.headless:
+        print(run_headless(config, arguments.steps))
+    else:
+        run_window(config)
+
+
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
