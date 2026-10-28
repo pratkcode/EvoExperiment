@@ -4,16 +4,31 @@ Basic settings for EvoExperiment.
 Keeping these values in one place makes them easy to find and change.
 """
 
-# --- Window settings ---
+# --- World and window size ---
+# The world is where organisms live. The window adds a side panel to its right.
+WORLD_WIDTH = 800
+WORLD_HEIGHT = 600
+PANEL_WIDTH = 320
 WINDOW_TITLE = "EvoExperiment"
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 600
+WINDOW_WIDTH = WORLD_WIDTH + PANEL_WIDTH
+WINDOW_HEIGHT = WORLD_HEIGHT
 FPS = 60  # Frames per second
-FAST_FORWARD_STEPS = 20  # Simulation steps per frame when fast-forward (F) is on
+
+# --- Simulation speed ---
+# Simulation steps per frame. 0.5 means one step every 2 frames.
+SPEED_LEVELS = [0.25, 0.5, 1, 2, 5, 10, 20, 50]
+FAST_FORWARD_STEPS = 20  # The speed the F key jumps to
 
 # --- Colors (Red, Green, Blue) ---
 BACKGROUND_COLOR = (20, 24, 32)
 TEXT_COLOR = (220, 230, 240)
+PANEL_COLOR = (30, 35, 46)          # Side panel background
+MUTED_TEXT_COLOR = (150, 160, 178)  # Labels and hints
+DIVIDER_COLOR = (52, 59, 74)        # Thin lines between panel sections
+ACCENT_COLOR = (80, 170, 255)       # Selected row, changed values, "running"
+WARNING_COLOR = (240, 190, 90)      # "Paused", unapplied changes
+BUTTON_COLOR = (44, 51, 66)
+BUTTON_HOVER_COLOR = (60, 69, 88)
 
 # --- Simulation defaults ---
 DEFAULT_SEED = 42

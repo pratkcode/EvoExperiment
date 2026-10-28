@@ -19,7 +19,9 @@ change environmental conditions and run experiments to see how populations evolv
 - Statistics recorded every 30 steps, with Matplotlib charts of population and average traits
 - A live chart window that updates while the simulation keeps running smoothly
 - Data saved locally as CSV files (open them in any spreadsheet) and charts saved as images
-- Pygame visuals for organisms and food, with pause, fast-forward, vision circles, and restart
+- A desktop interface: a side panel with live statistics, the seed, and population and generation
+  indicators; buttons and keyboard shortcuts for pause, single steps, eight speeds, reset, new
+  seed, and presets; and in-app editing of the main environment settings
 - A `Simulation` class kept separate from the graphics code, so it can be tested without a window
 - An `Organism` class with a unique ID, position, energy, age, alive/dead status, and three traits
 - Validation that rejects invalid trait values instead of letting them break the simulation
@@ -33,10 +35,12 @@ EvoExperiment/
 ├── src/
 │   └── evoexperiment/
 │       ├── __init__.py      # Package marker and version
-│       ├── main.py          # Window, keyboard input, and the main loop
+│       ├── main.py          # Opens the window; turns keys and clicks into actions
+│       ├── controls.py      # What each control does: pause, speed, reset, edits (no Pygame)
+│       ├── layout.py        # Where each panel button sits, for drawing and clicking (no Pygame)
 │       ├── cli.py           # Command-line options and headless runs (no Pygame)
 │       ├── experiment.py    # ExperimentConfig, presets, and validation (no Pygame)
-│       ├── renderer.py      # Pygame drawing functions (reads the simulation, never changes it)
+│       ├── renderer.py      # Draws the world, side panel, and help (reads state, never changes it)
 │       ├── stats.py         # Measurements, history, and CSV files (no Pygame or Matplotlib)
 │       ├── charts.py        # Matplotlib charts; also runs on its own to chart a CSV file
 │       ├── chart_link.py    # Opens the chart window as a separate program and feeds it data
@@ -52,8 +56,10 @@ EvoExperiment/
 │   ├── test_experiment.py   # Experiment settings, validation, reset, repeatability, command line
 │   ├── test_stats.py        # Statistics calculations, history tracking, CSV files, empty populations
 │   ├── test_charts.py       # Chart labels, extinct populations, saved images, live data updates
+│   ├── test_controls.py     # Pause, step, speed, reset, seeds, presets, setting edits, layout
+│   ├── test_interface.py    # Key bindings, and that panel text fits without overlapping
 │   └── test_simulation.py   # Simulation setup and seeds
-├── docs/images/             # Example chart used in this README
+├── docs/images/             # Screenshot and example chart used in this README
 ├── pytest.ini               # Tells pytest where to find the code
 ├── requirements.txt
 ├── .gitignore
@@ -98,32 +104,101 @@ PYTHONPATH=src python3 -m evoexperiment.main --experiment scarce_food --seed 7
 PYTHONPATH=src python3 -m evoexperiment.main --help    # list every option
 ```
 
-### Controls
+![The EvoExperiment window: the world on the left, the side panel on the right](docs/images/app_window.png)
 
-| Key   | Action                                                  |
-|-------|---------------------------------------------------------|
-| Space | Pause or resume                                         |
-| F     | Fast-forward (20 steps per frame) on or off             |
-| V     | Show or hide each organism's vision range               |
-| R     | Repeat the run: same seed and settings, plays out exactly the same |
-| N     | New run: same settings, new random seed                 |
-| 1–6   | Switch experiment (keeps the current seed): 1 default, 2 scarce food, 3 abundant food, 4 high mutation, 5 no mutation, 6 high energy cost |
-| C     | Open the live chart window (see [Statistics and Charts](#statistics-and-charts)) |
-| S     | Save the data so far (CSV) and a chart image (PNG) to the `output/` folder |
-| Esc   | Quit                                                    |
+The window is 1120 × 600 pixels. The 800 × 600 **world** is on the left, and the **side panel**
+is on the right. Press **H** at any time to see every keyboard shortcut.
 
-Every time a run starts, its full settings (including the seed) are printed in the terminal,
-so you can always repeat it later.
-
-### What you'll see
+### What you'll see in the world
 
 - **Green dots** are food.
 - **Circles** are organisms. The short line shows which way each one is heading.
 - Organism color shows energy: **blue** = full, **red** = nearly starving.
-- The text in the top-left shows the experiment name, seed, step number, population, food, births, deaths,
-  the highest generation reached, and the **average of each trait** next to its starting value.
+- Press **V** to show each organism's vision range as a faint circle (as in the screenshot).
+- While paused, a note in the top-left corner says so. If every organism dies, a note in the
+  middle offers to reset.
 
-See [How to Observe Evolution](#how-to-observe-evolution) for what to look for.
+### The side panel
+
+| Section          | What it shows |
+|------------------|---------------|
+| **Header**       | **RUNNING** (blue) or **PAUSED** (yellow), the experiment name, the **random seed**, the current step, and the speed |
+| **Population**   | Living organisms out of the maximum, the **range of generations alive** and the highest generation reached, total births and deaths, and food in the world out of the maximum |
+| **Average traits** | Average speed, vision, energy efficiency, and energy **now**, next to their values at the **start** of the run |
+| **Environment**  | The eight most useful settings, which you can change while the app runs (see below) |
+| **Buttons**      | Pause/Resume, Step, Slower, Faster, Reset, New seed, Charts, Save |
+
+The seed and experiment name also appear in the window's title bar, so they show up in
+screenshots and screen recordings.
+
+### Controls
+
+Every button in the panel has a keyboard shortcut.
+
+| Key             | Button     | Action |
+|-----------------|------------|--------|
+| Space           | Pause / Resume | Pause or resume. A paused simulation never advances. |
+| `.` (period)    | Step       | Advance exactly one step (pauses first if running) |
+| `+` / `-`       | Faster / Slower | Change speed: 0.25×, 0.5×, 1×, 2×, 5×, 10×, 20×, 50× steps per frame |
+| F               |            | Jump between 1× and 20× |
+| R               | Reset      | Restart with the **same seed and settings**. Plays out exactly the same. |
+| N               | New seed   | Restart with the same settings and a **new random seed** |
+| 1–6             |            | Switch experiment, keeping the seed: 1 default, 2 scarce food, 3 abundant food, 4 high mutation, 5 no mutation, 6 high energy cost |
+| Up / Down       | (click a row) | Select an environment setting |
+| Left / Right    | `-` / `+`  | Lower or raise the selected setting |
+| Enter           |            | Apply setting changes. Restarts with the same seed. |
+| Backspace       |            | Undo setting changes that haven't been applied |
+| V               |            | Show or hide vision ranges |
+| C               | Charts     | Open the live chart window (see [Statistics and Charts](#statistics-and-charts)) |
+| S               | Save       | Save the data so far (CSV) and a chart image (PNG) to `output/` |
+| H               |            | Show or hide the keyboard shortcuts |
+| Esc / Q         |            | Esc closes the help first; otherwise Esc or Q quits |
+
+Speed only changes how many steps run per frame, not what happens in them. A run at 50× ends up
+exactly where the same run at 1× would.
+
+### Changing environment settings
+
+| Panel row            | Setting                | One step | Range |
+|----------------------|------------------------|----------|-------|
+| Food spawn chance    | `food_spawn_chance`    | 0.02     | 0 – 1 |
+| Food energy          | `food_energy`          | 5        | 5 – 100 |
+| Energy per step      | `base_energy_cost`     | 0.02     | 0 – 1 |
+| Energy per distance  | `move_energy_cost`     | 0.02     | 0 – 1 |
+| Mutation chance      | `mutation_probability` | 0.05     | 0 – 1 |
+| Mutation strength    | `mutation_strength`    | 0.05     | 0 – 1 |
+| Starting population  | `population_size`      | 5        | 5 – 150 |
+| Max population       | `max_population`       | 10       | 10 – 300 |
+
+Changes are **staged**: an edited value turns yellow with a `*` next to it, but the running
+simulation isn't affected. Press **Enter** to restart with the new settings (and the same seed),
+or **Backspace** to undo them. That way, every run you see uses one fixed set of settings, which
+keeps runs reproducible and the charts honest. The applied experiment is named `custom`.
+
+Reset (R) and New seed (N) keep your staged edits. Choosing a preset (1–6) replaces them. The
+starting population can never be set above the maximum population.
+
+Every time a run starts, its full settings (including the seed) are printed in the terminal,
+so you can always repeat it later with command-line options.
+
+### Taking screenshots
+
+For a screenshot that explains itself (for example, for a portfolio or a report):
+
+1. **Pause first** (Space), so organisms don't move while you capture.
+2. Pick a moment that shows something: a few thousand steps into a run, after the averages have
+   moved away from their starting values. Press **F** to get there quickly.
+3. Press **V** if you want vision ranges visible. Press **H** to include the shortcut list.
+4. Capture the window:
+   - **macOS:** Cmd + Shift + 4, then press Space and click the window
+   - **Windows:** Alt + Print Screen (or Win + Shift + S)
+   - **Linux:** usually Print Screen, or your desktop's screenshot tool
+5. Press **S** to save matching charts and data. File names include the experiment, seed, and
+   step, for example `output/default_seed42_step9000.png`, so the screenshot and the charts can
+   be matched later.
+
+The seed is shown in the panel and in the title bar, so anyone can reproduce what a screenshot
+shows by running the same experiment with the same seed.
 
 ## Running the Tests
 
@@ -306,10 +381,10 @@ some better and some worse, for selection to act on. Try `mutation_probability=0
 ### How to observe evolution
 
 1. Run the app: `PYTHONPATH=src python3 -m evoexperiment.main`
-2. Press **F** to fast-forward. Evolution takes thousands of steps.
-3. Watch the **Avg speed / vision / efficiency** lines in the top-left. Each shows the current
+2. Press **F** (or `+` a few times) to speed up. Evolution takes thousands of steps.
+3. Watch **Average traits** in the side panel. Each row shows the current
    average next to the starting average.
-4. Watch **Highest generation** climb as new generations are born.
+4. Watch the **Generation** row climb as new generations are born.
 
 With the default settings (seed 42), by around step 12,000:
 

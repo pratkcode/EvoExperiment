@@ -184,7 +184,7 @@ class ExperimentConfig:
             seed = new_random_seed()
         return self.copy_with(seed=seed)
 
-    def create_simulation(self, world_width=settings.WINDOW_WIDTH, world_height=settings.WINDOW_HEIGHT):
+    def create_simulation(self, world_width=settings.WORLD_WIDTH, world_height=settings.WORLD_HEIGHT):
         """
         Build a brand-new Simulation from these settings.
 

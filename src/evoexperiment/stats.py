@@ -98,6 +98,25 @@ def take_measurement(simulation):
     return measurement
 
 
+def generation_range(simulation):
+    """
+    Return (lowest, highest) generation among living organisms,
+    or None if nobody is alive.
+    """
+    lowest = None
+    highest = None
+    for organism in simulation.organisms:
+        if not organism.is_alive:
+            continue
+        if lowest is None or organism.generation < lowest:
+            lowest = organism.generation
+        if highest is None or organism.generation > highest:
+            highest = organism.generation
+    if lowest is None:
+        return None
+    return lowest, highest
+
+
 # ----------------------------------------------------------------------
 # History over time
 # ----------------------------------------------------------------------
