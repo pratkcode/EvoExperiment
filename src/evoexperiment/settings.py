@@ -30,4 +30,26 @@ TRAIT_RANGES = {
 # --- Organism energy and age ---
 STARTING_ENERGY = 100.0
 MAX_ENERGY = 200.0
-MAX_AGE = 1000  # Organisms die of old age after this many steps
+MAX_AGE = 3000  # Organisms die of old age after this many steps (60 steps = 1 second)
+
+# --- Food ---
+INITIAL_FOOD_COUNT = 40   # Food placed at the start
+MAX_FOOD = 80             # No new food appears while there is this much
+FOOD_SPAWN_CHANCE = 0.3   # Chance (0 to 1) that one new food appears each step
+FOOD_ENERGY = 30.0        # Energy gained from eating one food
+EAT_DISTANCE = 6.0        # How close an organism must be to eat food
+
+# --- Energy costs (before energy efficiency is applied) ---
+BASE_ENERGY_COST = 0.1    # Energy used every step just by being alive
+MOVE_ENERGY_COST = 0.08   # Extra energy used per unit of distance moved
+
+# --- Wandering ---
+WANDER_TURN_ANGLE = 0.3   # Max random turn (radians) per step when no food is visible
+
+# --- Drawing ---
+ORGANISM_RADIUS = 6
+FOOD_RADIUS = 3
+FOOD_COLOR = (120, 200, 90)
+HEALTHY_COLOR = (80, 170, 255)   # Organism color at full energy
+STARVING_COLOR = (240, 80, 70)   # Organism color at zero energy
+VISION_COLOR = (60, 70, 90)

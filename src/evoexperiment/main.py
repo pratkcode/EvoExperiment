@@ -1,7 +1,10 @@
 """
 Entry point for EvoExperiment.
 
-Opens a Pygame window and shows a placeholder message.
+Opens a Pygame window and runs the ecosystem. This file only handles the
+window, keyboard input, and the main loop. The rules are in simulation.py
+and the drawing is in renderer.py.
+
 Run it from the project folder with:  python -m evoexperiment.main
 (see README.md for the full command).
 """
@@ -9,27 +12,18 @@ Run it from the project folder with:  python -m evoexperiment.main
 import pygame
 
 from evoexperiment import settings
+from evoexperiment.renderer import draw_world
 from evoexperiment.simulation import Simulation
 
 
-def draw_placeholder(screen, font, simulation):
-    """Draw the placeholder text in the middle of the screen."""
-    lines = [
-        "EvoExperiment",
-        "Simulation coming soon...",
-        f"Seed: {simulation.seed}   Population: {simulation.get_population_count()}",
-        "Press Esc or close the window to quit",
-    ]
-
-    # Start drawing a bit above the center so the block of text looks centered.
-    line_height = font.get_linesize()
-    y = settings.WINDOW_HEIGHT // 2 - (len(lines) * line_height) // 2
-
-    for line in lines:
-        text_surface = font.render(line, True, settings.TEXT_COLOR)
-        text_rect = text_surface.get_rect(center=(settings.WINDOW_WIDTH // 2, y))
-        screen.blit(text_surface, text_rect)
-        y += line_height
+def create_simulation():
+    """Create a new simulation using the values in settings.py."""
+    return Simulation(
+        seed=settings.DEFAULT_SEED,
+        population_size=settings.DEFAULT_POPULATION_SIZE,
+        world_width=settings.WINDOW_WIDTH,
+        world_height=settings.WINDOW_HEIGHT,
+    )
 
 
 def main():
@@ -38,30 +32,38 @@ def main():
     screen = pygame.display.set_mode((settings.WINDOW_WIDTH, settings.WINDOW_HEIGHT))
     pygame.display.set_caption(settings.WINDOW_TITLE)
     clock = pygame.time.Clock()
-    font = pygame.font.Font(None, 36)  # None = Pygame's default font
+    font = pygame.font.Font(None, 24)  # None = Pygame's default font
 
-    simulation = Simulation(
-        seed=settings.DEFAULT_SEED,
-        population_size=settings.DEFAULT_POPULATION_SIZE,
-        world_width=settings.WINDOW_WIDTH,
-        world_height=settings.WINDOW_HEIGHT,
-    )
+    simulation = create_simulation()
+    paused = False
+    show_vision = False
 
     running = True
     while running:
-        # 1. Handle events (keyboard, mouse, closing the window).
+        # 1. Handle events (keyboard, closing the window).
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.key == pygame.K_SPACE:
+                    paused = not paused
+                elif event.key == pygame.K_v:
+                    show_vision = not show_vision
+                elif event.key == pygame.K_r:
+                    # Same seed, so the restart plays out exactly the same way.
+                    simulation = create_simulation()
 
-        # 2. Draw everything.
-        screen.fill(settings.BACKGROUND_COLOR)
-        draw_placeholder(screen, font, simulation)
+        # 2. Update the simulation by one step.
+        if not paused:
+            simulation.step()
+
+        # 3. Draw everything.
+        draw_world(screen, font, simulation, show_vision, paused)
         pygame.display.flip()
 
-        # 3. Limit the frame rate.
+        # 4. Limit the frame rate.
         clock.tick(settings.FPS)
 
     pygame.quit()

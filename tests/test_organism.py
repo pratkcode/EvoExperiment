@@ -1,5 +1,6 @@
 """Tests for the Organism class. These never open a Pygame window."""
 
+import math
 import random
 
 import pytest
@@ -173,3 +174,57 @@ def test_dead_organism_does_not_change():
     assert organism.energy == 50.0
     assert organism.age == 0
     assert not organism.is_alive
+
+
+# --- Movement ---
+
+def test_move_towards_moves_by_speed():
+    organism = make_organism(x=0.0, y=0.0, speed=2.0)
+    moved = organism.move_towards(10.0, 0.0)
+    assert moved == 2.0
+    assert (organism.x, organism.y) == (2.0, 0.0)
+
+
+def test_move_towards_stops_on_close_target():
+    organism = make_organism(x=0.0, y=0.0, speed=3.0)
+    moved = organism.move_towards(1.0, 0.0)
+    assert moved == 1.0
+    assert (organism.x, organism.y) == (1.0, 0.0)
+
+
+def test_move_forward_follows_heading():
+    organism = make_organism(x=50.0, y=50.0, speed=2.0, heading=math.pi / 2)  # facing down
+    organism.move_forward()
+    assert organism.x == pytest.approx(50.0)
+    assert organism.y == pytest.approx(52.0)
+
+
+def test_dead_organism_does_not_move():
+    organism = make_organism(x=5.0, y=5.0)
+    organism.die()
+    assert organism.move_forward() == 0.0
+    assert organism.move_towards(100.0, 100.0) == 0.0
+    assert (organism.x, organism.y) == (5.0, 5.0)
+
+
+# --- Boundaries ---
+
+def test_stay_inside_clamps_left_edge_and_bounces():
+    organism = make_organism(x=-3.0, y=50.0, heading=math.pi)  # facing left
+    organism.stay_inside(100, 100)
+    assert organism.x == 0.0
+    assert math.cos(organism.heading) > 0  # now facing right
+
+
+def test_stay_inside_clamps_bottom_right_corner():
+    organism = make_organism(x=105.0, y=130.0, heading=math.pi / 4)  # facing down-right
+    organism.stay_inside(100, 100)
+    assert (organism.x, organism.y) == (100.0, 100.0)
+    assert math.cos(organism.heading) < 0  # now facing left
+    assert math.sin(organism.heading) < 0  # now facing up
+
+
+def test_stay_inside_leaves_inside_organism_alone():
+    organism = make_organism(x=40.0, y=60.0, heading=1.0)
+    organism.stay_inside(100, 100)
+    assert (organism.x, organism.y, organism.heading) == (40.0, 60.0, 1.0)

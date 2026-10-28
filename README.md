@@ -6,12 +6,13 @@ The long-term goal is to simulate organisms that move around an environment, fin
 use energy, reproduce, inherit traits, and mutate over generations. Users will be able to
 change environmental conditions and run experiments to see how populations evolve.
 
-> **Status:** Early development. Organisms can be created with traits, energy, and age,
-> but they don't move, eat, or reproduce yet. The app window still shows a placeholder message.
+> **Status:** Early development. Organisms move, search for food, eat, use energy, and die
+> of starvation or old age. They do not reproduce or mutate yet.
 
 ## Features (so far)
 
-- Pygame window with a placeholder screen
+- A working ecosystem: organisms see food, move toward it, eat it, and starve without it
+- Pygame visuals for organisms and food, with pause, vision circles, and restart
 - A `Simulation` class kept separate from the graphics code, so it can be tested without a window
 - An `Organism` class with a unique ID, position, energy, age, alive/dead status, and three traits
 - Validation that rejects invalid trait values instead of letting them break the simulation
@@ -25,13 +26,16 @@ EvoExperiment/
 ├── src/
 │   └── evoexperiment/
 │       ├── __init__.py      # Package marker and version
-│       ├── main.py          # Opens the Pygame window (graphics only)
-│       ├── settings.py      # Window, trait ranges, energy and age settings
-│       ├── organism.py      # The Organism class (no Pygame)
-│       └── simulation.py    # Core simulation logic (no Pygame)
+│       ├── main.py          # Window, keyboard input, and the main loop
+│       ├── renderer.py      # Pygame drawing functions (reads the simulation, never changes it)
+│       ├── settings.py      # All tunable numbers: window, traits, food, energy costs
+│       ├── organism.py      # The Organism class and its movement (no Pygame)
+│       ├── food.py          # The Food class (no Pygame)
+│       └── simulation.py    # The ecosystem rules and the step() method (no Pygame)
 ├── tests/
-│   ├── test_organism.py     # Tests for the Organism class
-│   └── test_simulation.py   # Tests for the Simulation class
+│   ├── test_organism.py     # Organism creation, traits, energy, aging, movement, boundaries
+│   ├── test_ecosystem.py    # Eating, energy costs, death, boundaries, reproducibility
+│   └── test_simulation.py   # Simulation setup and seeds
 ├── pytest.ini               # Tells pytest where to find the code
 ├── requirements.txt
 ├── .gitignore
@@ -66,7 +70,24 @@ PYTHONPATH=src python3 -m evoexperiment.main
 $env:PYTHONPATH="src"; python -m evoexperiment.main
 ```
 
-Press **Esc** or close the window to quit.
+### Controls
+
+| Key   | Action                                                  |
+|-------|---------------------------------------------------------|
+| Space | Pause or resume                                         |
+| V     | Show or hide each organism's vision range               |
+| R     | Restart with the same seed (plays out exactly the same) |
+| Esc   | Quit                                                    |
+
+### What you'll see
+
+- **Green dots** are food.
+- **Circles** are organisms. The short line shows which way each one is heading.
+- Organism color shows energy: **blue** = full, **red** = nearly starving.
+- The text in the top-left shows the step number, seed, population, food, food eaten, and deaths.
+
+With the default settings, a few organisms starve early on and the rest die of old age at
+step 3000 (about 50 seconds). There is no reproduction yet, so the population can only shrink.
 
 ## Running the Tests
 
@@ -93,12 +114,15 @@ Each organism (`src/evoexperiment/organism.py`) has:
 | `age`               | Steps lived so far                                        |
 | `is_alive`          | `False` once the organism dies                            |
 
-What an organism can do so far:
+What an organism can do:
 
 - `gain_energy(amount)` adds energy, up to `max_energy`.
 - `use_energy(amount)` spends `amount / energy_efficiency` energy. With an efficiency of 1.25,
   using 50 costs only 40. The organism dies when its energy reaches 0.
-- `grow_older()` adds 1 to its age. The organism dies when it reaches `max_age` (1000).
+- `grow_older()` adds 1 to its age. The organism dies when it reaches `max_age` (3000).
+- `move_towards(x, y)` moves up to `speed` units toward a point.
+- `move_forward()` moves `speed` units in the direction it is facing (`heading`).
+- `stay_inside(width, height)` keeps it inside the world, bouncing it off the edges.
 - A dead organism can't gain energy, spend energy, or age.
 
 ### Trait ranges
@@ -141,10 +165,44 @@ org.use_energy(30)
 print(org)  # Organism(id=1, pos=(10.0, 20.0), energy=70.0, age=0, ...)
 ```
 
+## The Ecosystem
+
+`Simulation.step()` moves the world forward by one time step. The app calls it once per frame.
+Each step always runs in this order:
+
+1. **Food may appear.** There is a `FOOD_SPAWN_CHANCE` chance that one new piece of food
+   appears at a random spot, unless there are already `MAX_FOOD` pieces.
+2. **Each living organism, in ID order:**
+   1. Looks for the nearest food within its `vision`. It moves toward that food, or wanders
+      in a slightly random direction if it sees none.
+   2. Bounces off the edge if it moved outside the world.
+   3. Pays energy: `(BASE_ENERGY_COST + distance_moved * MOVE_ENERGY_COST) / energy_efficiency`.
+      Faster organisms reach food sooner but pay more to move.
+   4. If it is still alive and within `EAT_DISTANCE` of food, eats it, gains `FOOD_ENERGY`,
+      and the food is removed.
+   5. Grows one step older.
+3. **Dead organisms are removed** (from starvation or reaching `max_age`).
+
+All of these numbers are in `settings.py`, and you can also pass them to `Simulation` for a single
+experiment:
+
+```python
+from evoexperiment.simulation import Simulation
+
+scarce = Simulation(seed=7, food_spawn_chance=0.05, initial_food_count=10)
+for _ in range(1000):
+    scarce.step()
+print(scarce.get_population_count(), "organisms survived")
+```
+
+The ecosystem rules live in `simulation.py`, `organism.py`, and `food.py`. `renderer.py` only
+draws, so all the rules can be tested without opening a window.
+
 ## Reproducible Experiments
 
-The `Simulation` class takes a `seed`. All random positions and traits come from the simulation's
-own random number generator, so the same seed and settings always give the same organisms:
+The `Simulation` class takes a `seed`. Every random choice (starting positions, traits, food
+locations, and wandering) comes from the simulation's own random number generator. So the same
+seed and settings always give the same run, step for step:
 
 ```python
 from evoexperiment.simulation import Simulation
@@ -167,8 +225,8 @@ The app's default seed and population size are set in `src/evoexperiment/setting
 
 - [x] Project foundation
 - [x] Organisms with traits, energy, aging, and death
-- [ ] Organisms that move around the environment
-- [ ] Food and energy
+- [x] Organisms that move around the environment
+- [x] Food and energy
 - [ ] Reproduction and inherited traits
 - [ ] Mutation over generations
 - [ ] Population charts with Matplotlib

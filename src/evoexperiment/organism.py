@@ -59,6 +59,7 @@ class Organism:
         max_energy=settings.MAX_ENERGY,
         max_age=settings.MAX_AGE,
         trait_ranges=None,
+        heading=0.0,
     ):
         # Use the default trait ranges unless the experiment gives its own.
         if trait_ranges is None:
@@ -74,6 +75,7 @@ class Organism:
         # --- Position ---
         check_number("x", x)
         check_number("y", y)
+        check_number("heading", heading)
 
         # --- Traits: each must be inside its allowed range ---
         traits = {"speed": speed, "vision": vision, "energy_efficiency": energy_efficiency}
@@ -112,6 +114,69 @@ class Organism:
         self.age = age
         self.max_age = max_age
         self.is_alive = True
+
+        # The direction the organism is facing, as an angle in radians.
+        # 0 points right (+x) and math.pi / 2 points down (+y, like the screen).
+        self.heading = float(heading)
+
+    # ------------------------------------------------------------------
+    # Movement
+    # ------------------------------------------------------------------
+
+    def move_towards(self, target_x, target_y):
+        """
+        Move up to `speed` units straight toward a target point.
+
+        If the target is closer than `speed`, stop exactly on it.
+        Returns the distance actually moved (used to work out energy cost).
+        """
+        if not self.is_alive:
+            return 0.0
+
+        dx = target_x - self.x
+        dy = target_y - self.y
+        distance = math.hypot(dx, dy)
+        if distance == 0:
+            return 0.0
+
+        step = min(self.speed, distance)
+        self.x += dx / distance * step
+        self.y += dy / distance * step
+        self.heading = math.atan2(dy, dx)
+        return step
+
+    def move_forward(self):
+        """
+        Move `speed` units in the direction of `heading`.
+        Returns the distance moved.
+        """
+        if not self.is_alive:
+            return 0.0
+
+        self.x += math.cos(self.heading) * self.speed
+        self.y += math.sin(self.heading) * self.speed
+        return self.speed
+
+    def stay_inside(self, world_width, world_height):
+        """
+        Keep the organism inside the world.
+
+        If it crosses an edge, put it back on the edge and turn it around,
+        like a ball bouncing off a wall.
+        """
+        if self.x < 0:
+            self.x = 0.0
+            self.heading = math.pi - self.heading
+        elif self.x > world_width:
+            self.x = float(world_width)
+            self.heading = math.pi - self.heading
+
+        if self.y < 0:
+            self.y = 0.0
+            self.heading = -self.heading
+        elif self.y > world_height:
+            self.y = float(world_height)
+            self.heading = -self.heading
 
     def gain_energy(self, amount):
         """
@@ -178,7 +243,9 @@ class Organism:
         )
 
 
-def create_random_organism(organism_id, rng, world_width, world_height, trait_ranges=None):
+def create_random_organism(
+    organism_id, rng, world_width, world_height, trait_ranges=None, max_age=settings.MAX_AGE
+):
     """
     Create an organism with a random position and random traits.
 
@@ -195,6 +262,7 @@ def create_random_organism(organism_id, rng, world_width, world_height, trait_ra
     speed = rng.uniform(*trait_ranges["speed"])
     vision = rng.uniform(*trait_ranges["vision"])
     energy_efficiency = rng.uniform(*trait_ranges["energy_efficiency"])
+    heading = rng.uniform(0, 2 * math.pi)
 
     return Organism(
         organism_id=organism_id,
@@ -204,4 +272,6 @@ def create_random_organism(organism_id, rng, world_width, world_height, trait_ra
         vision=vision,
         energy_efficiency=energy_efficiency,
         trait_ranges=trait_ranges,
+        max_age=max_age,
+        heading=heading,
     )
