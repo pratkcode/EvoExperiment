@@ -37,6 +37,7 @@ def main():
     simulation = create_simulation()
     paused = False
     show_vision = False
+    steps_per_frame = 1  # Press F to switch between normal and fast-forward
 
     running = True
     while running:
@@ -51,16 +52,23 @@ def main():
                     paused = not paused
                 elif event.key == pygame.K_v:
                     show_vision = not show_vision
+                elif event.key == pygame.K_f:
+                    if steps_per_frame == 1:
+                        steps_per_frame = settings.FAST_FORWARD_STEPS
+                    else:
+                        steps_per_frame = 1
                 elif event.key == pygame.K_r:
                     # Same seed, so the restart plays out exactly the same way.
                     simulation = create_simulation()
 
-        # 2. Update the simulation by one step.
+        # 2. Update the simulation. Fast-forward runs several steps per frame.
+        #    The results are identical either way; only the drawing is skipped.
         if not paused:
-            simulation.step()
+            for _ in range(steps_per_frame):
+                simulation.step()
 
         # 3. Draw everything.
-        draw_world(screen, font, simulation, show_vision, paused)
+        draw_world(screen, font, simulation, show_vision, paused, steps_per_frame)
         pygame.display.flip()
 
         # 4. Limit the frame rate.

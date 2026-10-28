@@ -60,6 +60,8 @@ class Organism:
         max_age=settings.MAX_AGE,
         trait_ranges=None,
         heading=0.0,
+        generation=1,
+        parent_id=None,
     ):
         # Use the default trait ranges unless the experiment gives its own.
         if trait_ranges is None:
@@ -102,6 +104,12 @@ class Organism:
         if age >= max_age:
             raise ValueError(f"age ({age}) must be less than max_age ({max_age})")
 
+        # --- Family tree ---
+        if isinstance(generation, bool) or not isinstance(generation, int) or generation < 1:
+            raise ValueError(f"generation must be an integer of 1 or more, got {generation!r}")
+        if parent_id is not None and (isinstance(parent_id, bool) or not isinstance(parent_id, int)):
+            raise TypeError(f"parent_id must be an integer or None, got {parent_id!r}")
+
         # All checks passed, so store the values.
         self.id = organism_id
         self.x = float(x)
@@ -118,6 +126,15 @@ class Organism:
         # The direction the organism is facing, as an angle in radians.
         # 0 points right (+x) and math.pi / 2 points down (+y, like the screen).
         self.heading = float(heading)
+
+        # Family tree. The starting population is generation 1 and has no parent.
+        # Each offspring is one generation higher than its parent.
+        self.generation = generation
+        self.parent_id = parent_id
+        self.offspring_count = 0
+
+        # Steps left before this organism is allowed to reproduce again.
+        self.reproduction_cooldown = 0
 
     # ------------------------------------------------------------------
     # Movement
@@ -226,7 +243,43 @@ class Organism:
             return
 
         self.age += 1
+        if self.reproduction_cooldown > 0:
+            self.reproduction_cooldown -= 1
         if self.age >= self.max_age:
+            self.die()
+
+    # ------------------------------------------------------------------
+    # Reproduction
+    # ------------------------------------------------------------------
+
+    def can_reproduce(self, energy_threshold, min_age):
+        """
+        Return True if this organism is ready to reproduce:
+        alive, old enough, has enough energy, and is not on cooldown.
+        """
+        return (
+            self.is_alive
+            and self.energy >= energy_threshold
+            and self.age >= min_age
+            and self.reproduction_cooldown == 0
+        )
+
+    def pay_reproduction_cost(self, energy_cost, cooldown):
+        """
+        Take the energy cost of having an offspring and start the cooldown.
+
+        Energy efficiency does NOT reduce this cost: making offspring costs
+        every organism the same amount.
+        """
+        check_number("energy_cost", energy_cost)
+        if energy_cost < 0:
+            raise ValueError("energy_cost cannot be negative")
+
+        self.energy -= energy_cost
+        self.reproduction_cooldown = cooldown
+        self.offspring_count += 1
+        if self.energy <= 0:
+            self.energy = 0.0
             self.die()
 
     def die(self):
@@ -237,7 +290,7 @@ class Organism:
         """A readable description, useful when printing or debugging."""
         status = "alive" if self.is_alive else "dead"
         return (
-            f"Organism(id={self.id}, pos=({self.x:.1f}, {self.y:.1f}), "
+            f"Organism(id={self.id}, gen={self.generation}, pos=({self.x:.1f}, {self.y:.1f}), "
             f"energy={self.energy:.1f}, age={self.age}, speed={self.speed:.2f}, "
             f"vision={self.vision:.1f}, efficiency={self.energy_efficiency:.2f}, {status})"
         )

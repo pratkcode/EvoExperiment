@@ -228,3 +228,35 @@ def test_stay_inside_leaves_inside_organism_alone():
     organism = make_organism(x=40.0, y=60.0, heading=1.0)
     organism.stay_inside(100, 100)
     assert (organism.x, organism.y, organism.heading) == (40.0, 60.0, 1.0)
+
+
+# --- Reproduction helpers ---
+
+def test_can_reproduce_checks_energy_and_age():
+    organism = make_organism(energy=150.0, age=5)
+    assert organism.can_reproduce(energy_threshold=150.0, min_age=5)
+    assert not organism.can_reproduce(energy_threshold=151.0, min_age=5)
+    assert not organism.can_reproduce(energy_threshold=150.0, min_age=6)
+
+
+def test_pay_reproduction_cost_starts_cooldown():
+    organism = make_organism(energy=150.0)
+    organism.pay_reproduction_cost(energy_cost=50.0, cooldown=2)
+    assert organism.energy == 100.0
+    assert organism.offspring_count == 1
+    assert not organism.can_reproduce(energy_threshold=0, min_age=0)
+    organism.grow_older()
+    organism.grow_older()
+    assert organism.can_reproduce(energy_threshold=0, min_age=0)
+
+
+def test_paying_all_energy_to_reproduce_kills_the_organism():
+    organism = make_organism(energy=50.0)
+    organism.pay_reproduction_cost(energy_cost=50.0, cooldown=0)
+    assert not organism.is_alive
+
+
+@pytest.mark.parametrize("changes", [{"generation": 0}, {"generation": 1.5}, {"parent_id": "a"}])
+def test_invalid_family_values_are_rejected(changes):
+    with pytest.raises((ValueError, TypeError)):
+        make_organism(**changes)

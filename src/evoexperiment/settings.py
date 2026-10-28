@@ -9,6 +9,7 @@ WINDOW_TITLE = "EvoExperiment"
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
 FPS = 60  # Frames per second
+FAST_FORWARD_STEPS = 20  # Simulation steps per frame when fast-forward (F) is on
 
 # --- Colors (Red, Green, Blue) ---
 BACKGROUND_COLOR = (20, 24, 32)
@@ -53,3 +54,21 @@ FOOD_COLOR = (120, 200, 90)
 HEALTHY_COLOR = (80, 170, 255)   # Organism color at full energy
 STARVING_COLOR = (240, 80, 70)   # Organism color at zero energy
 VISION_COLOR = (60, 70, 90)
+
+# --- Reproduction ---
+# An organism can reproduce when ALL of these are true:
+#   - its energy is at least REPRODUCTION_ENERGY_THRESHOLD
+#   - its age is at least MIN_REPRODUCTION_AGE
+#   - at least REPRODUCTION_COOLDOWN steps have passed since it last reproduced
+#   - the living population is below MAX_POPULATION
+REPRODUCTION_ENERGY_THRESHOLD = 150.0
+REPRODUCTION_ENERGY_COST = 80.0   # Energy the parent loses when it reproduces
+OFFSPRING_ENERGY = 60.0           # Energy a newborn starts with
+MIN_REPRODUCTION_AGE = 300        # Steps old before an organism can reproduce
+REPRODUCTION_COOLDOWN = 200       # Steps an organism must wait between offspring
+OFFSPRING_SPAWN_DISTANCE = 10.0   # Newborns appear up to this far from the parent
+MAX_POPULATION = 150              # Hard limit on the number of living organisms
+
+# --- Mutation ---
+MUTATION_PROBABILITY = 0.2   # Chance (0 to 1) that each trait mutates in a newborn
+MUTATION_STRENGTH = 0.1      # Size of a typical mutation, as a fraction of the trait's range

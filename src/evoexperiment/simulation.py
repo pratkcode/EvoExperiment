@@ -1,9 +1,9 @@
 """
 Core simulation logic for EvoExperiment.
 
-All the rules of the ecosystem live here (and in organism.py and food.py).
-This file must NOT import pygame. Keeping the simulation separate from the
-graphics means we can test it with pytest without opening a window.
+All the rules of the ecosystem live here (and in organism.py, food.py, and
+genetics.py). This file must NOT import pygame. Keeping the simulation separate
+from the graphics means we can test it with pytest without opening a window.
 """
 
 import math
@@ -11,6 +11,7 @@ import random
 
 from evoexperiment import settings
 from evoexperiment.food import Food
+from evoexperiment.genetics import TRAIT_NAMES, clamp, inherit_traits
 from evoexperiment.organism import (
     Organism,
     check_number,
@@ -49,6 +50,14 @@ class Simulation:
         eat_distance=settings.EAT_DISTANCE,
         base_energy_cost=settings.BASE_ENERGY_COST,
         move_energy_cost=settings.MOVE_ENERGY_COST,
+        reproduction_energy_threshold=settings.REPRODUCTION_ENERGY_THRESHOLD,
+        reproduction_energy_cost=settings.REPRODUCTION_ENERGY_COST,
+        offspring_energy=settings.OFFSPRING_ENERGY,
+        min_reproduction_age=settings.MIN_REPRODUCTION_AGE,
+        reproduction_cooldown=settings.REPRODUCTION_COOLDOWN,
+        mutation_probability=settings.MUTATION_PROBABILITY,
+        mutation_strength=settings.MUTATION_STRENGTH,
+        max_population=settings.MAX_POPULATION,
     ):
         # --- Check the settings before using them ---
         if population_size < 0:
@@ -75,10 +84,38 @@ class Simulation:
         if food_energy <= 0:
             raise ValueError("food_energy must be greater than 0")
 
+        # Reproduction and mutation settings
+        check_not_negative("reproduction_energy_cost", reproduction_energy_cost)
+        check_number("reproduction_energy_threshold", reproduction_energy_threshold)
+        if reproduction_energy_threshold <= reproduction_energy_cost:
+            # Otherwise a parent could reproduce itself to death.
+            raise ValueError(
+                "reproduction_energy_threshold must be larger than reproduction_energy_cost"
+            )
+        check_number("offspring_energy", offspring_energy)
+        if offspring_energy <= 0 or offspring_energy > settings.MAX_ENERGY:
+            raise ValueError(f"offspring_energy must be above 0 and at most {settings.MAX_ENERGY}")
+        for name, value in [
+            ("min_reproduction_age", min_reproduction_age),
+            ("reproduction_cooldown", reproduction_cooldown),
+            ("max_population", max_population),
+        ]:
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer, got {value!r}")
+        if population_size > max_population:
+            raise ValueError("population_size cannot be larger than max_population")
+        check_number("mutation_probability", mutation_probability)
+        if mutation_probability < 0 or mutation_probability > 1:
+            raise ValueError("mutation_probability must be between 0 and 1")
+        check_not_negative("mutation_strength", mutation_strength)
+
         self.seed = seed
         self.population_size = population_size
         self.world_width = world_width
         self.world_height = world_height
+        # Use the default trait ranges unless the experiment gives its own.
+        if trait_ranges is None:
+            trait_ranges = settings.TRAIT_RANGES
         self.trait_ranges = trait_ranges
         self.max_age = max_age
         self.max_food = max_food
@@ -87,6 +124,14 @@ class Simulation:
         self.eat_distance = eat_distance
         self.base_energy_cost = base_energy_cost
         self.move_energy_cost = move_energy_cost
+        self.reproduction_energy_threshold = reproduction_energy_threshold
+        self.reproduction_energy_cost = reproduction_energy_cost
+        self.offspring_energy = offspring_energy
+        self.min_reproduction_age = min_reproduction_age
+        self.reproduction_cooldown = reproduction_cooldown
+        self.mutation_probability = mutation_probability
+        self.mutation_strength = mutation_strength
+        self.max_population = max_population
 
         # Each simulation gets its own random number generator.
         # Using the same seed always gives the same sequence of random numbers,
@@ -98,6 +143,8 @@ class Simulation:
         self.step_count = 0
         self.total_deaths = 0
         self.total_food_eaten = 0
+        self.total_births = 0
+        self.highest_generation = 1
 
         # The next ID to give out. Counting up guarantees every ID is unique.
         self.next_organism_id = 0
@@ -106,6 +153,11 @@ class Simulation:
 
         # A record of where each organism started, one (x, y) pair per organism.
         self.initial_positions = [(org.x, org.y) for org in self.organisms]
+
+        # The average traits at the start, so we can see how much they evolve.
+        self.starting_averages = {}
+        for trait_name in TRAIT_NAMES:
+            self.starting_averages[trait_name] = self.get_average_trait(trait_name)
 
         self.food = []
         for _ in range(initial_food_count):
@@ -182,6 +234,21 @@ class Simulation:
                 count += 1
         return count
 
+    def get_average_trait(self, trait_name):
+        """
+        Return the average value of a trait across living organisms,
+        or None if nobody is alive.
+        """
+        total = 0.0
+        count = 0
+        for organism in self.organisms:
+            if organism.is_alive:
+                total += getattr(organism, trait_name)
+                count += 1
+        if count == 0:
+            return None
+        return total / count
+
     def get_food_count(self):
         """Return how many pieces of food are in the world."""
         return len(self.food)
@@ -213,15 +280,19 @@ class Simulation:
 
         The order is always the same, which keeps runs reproducible:
           1. Maybe spawn new food.
-          2. Update each living organism, in ID order.
+          2. Update each living organism, in ID order (this may add newborns).
           3. Remove organisms that died.
+
+        Newborns are added to the end of the list. They don't act until the next step.
         """
         self.step_count += 1
 
         if len(self.food) < self.max_food and self.rng.random() < self.food_spawn_chance:
             self.spawn_random_food()
 
-        for organism in self.organisms:
+        # Loop over a copy of the list, because newborns are added to the real list.
+        organisms_this_step = list(self.organisms)
+        for organism in organisms_this_step:
             if organism.is_alive:
                 self.update_organism(organism)
 
@@ -235,6 +306,7 @@ class Simulation:
           3. Pay energy for living and for moving (reduced by energy efficiency).
           4. If it survived and is touching food, eat it.
           5. Grow one step older.
+          6. If it is still alive and ready, reproduce.
         """
         # 1. Move.
         target = self.find_nearest_food(organism.x, organism.y, organism.vision)
@@ -263,6 +335,62 @@ class Simulation:
 
         # 5. Age.
         organism.grow_older()
+
+        # 6. Reproduce (try_to_reproduce checks all the requirements).
+        self.try_to_reproduce(organism)
+
+    def try_to_reproduce(self, parent):
+        """
+        Create one offspring if the parent meets every requirement and the
+        population is below the limit. Returns the new organism, or None.
+
+        The offspring:
+          - gets a new unique ID
+          - inherits the parent's traits, with possible small mutations
+          - appears near the parent, facing a random direction
+          - is one generation higher than the parent
+        """
+        if not parent.can_reproduce(self.reproduction_energy_threshold, self.min_reproduction_age):
+            return None
+        if self.get_population_count() >= self.max_population:
+            return None
+
+        # Every random choice uses self.rng, in a fixed order, so runs are reproducible.
+        traits = inherit_traits(
+            parent,
+            self.rng,
+            self.trait_ranges,
+            self.mutation_probability,
+            self.mutation_strength,
+        )
+        spread = settings.OFFSPRING_SPAWN_DISTANCE
+        x = clamp(parent.x + self.rng.uniform(-spread, spread), 0, self.world_width)
+        y = clamp(parent.y + self.rng.uniform(-spread, spread), 0, self.world_height)
+        heading = self.rng.uniform(0, 2 * math.pi)
+
+        parent.pay_reproduction_cost(self.reproduction_energy_cost, self.reproduction_cooldown)
+
+        child = Organism(
+            organism_id=self.next_organism_id,
+            x=x,
+            y=y,
+            speed=traits["speed"],
+            vision=traits["vision"],
+            energy_efficiency=traits["energy_efficiency"],
+            energy=self.offspring_energy,
+            max_age=self.max_age,
+            trait_ranges=self.trait_ranges,
+            heading=heading,
+            generation=parent.generation + 1,
+            parent_id=parent.id,
+        )
+        self.next_organism_id += 1
+        self.organisms.append(child)
+
+        self.total_births += 1
+        if child.generation > self.highest_generation:
+            self.highest_generation = child.generation
+        return child
 
     def remove_dead_organisms(self):
         """Take dead organisms out of the world and count them."""

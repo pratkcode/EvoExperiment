@@ -50,13 +50,30 @@ def draw_organism(screen, organism, show_vision):
     pygame.draw.line(screen, color, position, (int(end_x), int(end_y)), 2)
 
 
-def draw_hud(screen, font, simulation, paused):
+def format_trait_line(simulation, trait_name, label):
+    """
+    Build a line like "Avg speed: 2.41  (start 1.75)" so you can see
+    how a trait has changed since the simulation began.
+    """
+    current = simulation.get_average_trait(trait_name)
+    start = simulation.starting_averages.get(trait_name)
+    current_text = "-" if current is None else f"{current:.2f}"
+    start_text = "-" if start is None else f"{start:.2f}"
+    return f"Avg {label}: {current_text}  (start {start_text})"
+
+
+def draw_hud(screen, font, simulation, paused, steps_per_frame=1):
     """Draw the information text in the top-left corner."""
     lines = [
-        f"Step: {simulation.step_count}   Seed: {simulation.seed}",
-        f"Population: {simulation.get_population_count()}   Food: {simulation.get_food_count()}",
-        f"Eaten: {simulation.total_food_eaten}   Deaths: {simulation.total_deaths}",
-        "Space: pause   V: vision   R: restart   Esc: quit",
+        f"Step: {simulation.step_count}   Seed: {simulation.seed}   Speed: x{steps_per_frame}",
+        f"Population: {simulation.get_population_count()}/{simulation.max_population}"
+        f"   Food: {simulation.get_food_count()}",
+        f"Births: {simulation.total_births}   Deaths: {simulation.total_deaths}"
+        f"   Highest generation: {simulation.highest_generation}",
+        format_trait_line(simulation, "speed", "speed"),
+        format_trait_line(simulation, "vision", "vision"),
+        format_trait_line(simulation, "energy_efficiency", "efficiency"),
+        "Space: pause  F: fast  V: vision  R: restart  Esc: quit",
     ]
     if paused:
         lines.append("PAUSED")
@@ -70,7 +87,7 @@ def draw_hud(screen, font, simulation, paused):
         y += font.get_linesize()
 
 
-def draw_world(screen, font, simulation, show_vision=False, paused=False):
+def draw_world(screen, font, simulation, show_vision=False, paused=False, steps_per_frame=1):
     """Draw the whole frame: background, food, organisms, then the text on top."""
     screen.fill(settings.BACKGROUND_COLOR)
 
@@ -80,4 +97,4 @@ def draw_world(screen, font, simulation, show_vision=False, paused=False):
     for organism in simulation.organisms:
         draw_organism(screen, organism, show_vision)
 
-    draw_hud(screen, font, simulation, paused)
+    draw_hud(screen, font, simulation, paused, steps_per_frame)
