@@ -16,6 +16,9 @@ change environmental conditions and run experiments to see how populations evolv
 - Adjustable experiment settings (food, energy costs, mutation, population) from the command line
 - Six ready-made experiments, and a headless mode that prints results without opening a window
 - Repeat any run exactly (same seed and settings), or reset with a new random seed
+- Statistics recorded every 30 steps, with Matplotlib charts of population and average traits
+- A live chart window that updates while the simulation keeps running smoothly
+- Data saved locally as CSV files (open them in any spreadsheet) and charts saved as images
 - Pygame visuals for organisms and food, with pause, fast-forward, vision circles, and restart
 - A `Simulation` class kept separate from the graphics code, so it can be tested without a window
 - An `Organism` class with a unique ID, position, energy, age, alive/dead status, and three traits
@@ -34,6 +37,9 @@ EvoExperiment/
 │       ├── cli.py           # Command-line options and headless runs (no Pygame)
 │       ├── experiment.py    # ExperimentConfig, presets, and validation (no Pygame)
 │       ├── renderer.py      # Pygame drawing functions (reads the simulation, never changes it)
+│       ├── stats.py         # Measurements, history, and CSV files (no Pygame or Matplotlib)
+│       ├── charts.py        # Matplotlib charts; also runs on its own to chart a CSV file
+│       ├── chart_link.py    # Opens the chart window as a separate program and feeds it data
 │       ├── settings.py      # All tunable numbers: window, traits, food, energy costs
 │       ├── organism.py      # The Organism class and its movement (no Pygame)
 │       ├── food.py          # The Food class (no Pygame)
@@ -44,7 +50,10 @@ EvoExperiment/
 │   ├── test_ecosystem.py    # Eating, energy costs, death, boundaries, reproducibility
 │   ├── test_reproduction.py # Reproduction, inheritance, mutation, IDs, generations, population cap
 │   ├── test_experiment.py   # Experiment settings, validation, reset, repeatability, command line
+│   ├── test_stats.py        # Statistics calculations, history tracking, CSV files, empty populations
+│   ├── test_charts.py       # Chart labels, extinct populations, saved images, live data updates
 │   └── test_simulation.py   # Simulation setup and seeds
+├── docs/images/             # Example chart used in this README
 ├── pytest.ini               # Tells pytest where to find the code
 ├── requirements.txt
 ├── .gitignore
@@ -63,9 +72,12 @@ cd EvoExperiment
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# 3. Install the dependencies
+# 3. Install the dependencies (Pygame, Matplotlib, pytest)
 pip install -r requirements.txt
 ```
+
+The commands below assume the virtual environment is active. If `python` isn't found, use
+`python3` instead.
 
 ## Running the App
 
@@ -96,6 +108,8 @@ PYTHONPATH=src python3 -m evoexperiment.main --help    # list every option
 | R     | Repeat the run: same seed and settings, plays out exactly the same |
 | N     | New run: same settings, new random seed                 |
 | 1–6   | Switch experiment (keeps the current seed): 1 default, 2 scarce food, 3 abundant food, 4 high mutation, 5 no mutation, 6 high energy cost |
+| C     | Open the live chart window (see [Statistics and Charts](#statistics-and-charts)) |
+| S     | Save the data so far (CSV) and a chart image (PNG) to the `output/` folder |
 | Esc   | Quit                                                    |
 
 Every time a run starts, its full settings (including the seed) are printed in the terminal,
@@ -454,6 +468,132 @@ other_seed = scarce.with_new_seed()          # same settings, new seed
 richer = scarce.copy_with(food_energy=50)    # change one setting
 ```
 
+## Statistics and Charts
+
+![Charts for the default experiment, seed 42, over 15,000 steps](docs/images/charts_default_seed42.png)
+
+### What is measured
+
+Every **30 simulation steps** (set by `STATS_INTERVAL` in `settings.py`), `stats.py` records one
+row of measurements:
+
+| Measurement            | Meaning |
+|------------------------|---------|
+| `step`                 | Simulation step when the measurement was taken |
+| `living`               | Organisms alive right now (the current population) |
+| `total_births`         | Offspring born since the start |
+| `total_deaths`         | Organisms that have died since the start |
+| `food`                 | Food items currently in the world |
+| `highest_generation`   | Highest generation any organism has reached |
+| `avg_speed`, `std_speed` | Average speed of living organisms, and how spread out it is (standard deviation) |
+| `avg_vision`, `std_vision` | Same for vision |
+| `avg_energy_efficiency`, `std_energy_efficiency` | Same for energy efficiency |
+| `avg_energy`, `std_energy` | Same for current energy |
+
+Some details:
+
+- **Measurements follow simulation steps, not screen frames.** Pausing, fast-forwarding, or a slow
+  computer never adds duplicate rows or skips any. The same seed and settings always produce the
+  same history.
+- **Recording only reads the world,** so it never changes how a run plays out. A test checks this.
+- **When nobody is alive,** the averages are left empty (`None` in Python, a blank cell in CSV)
+  instead of crashing or pretending to be 0. The charts show a gap, and the population chart is
+  labeled with the step at which the population died out.
+
+### Viewing the charts
+
+| How | What happens |
+|-----|--------------|
+| Press **C** in the app | Opens a live chart window that refreshes every 2 seconds |
+| Press **S** in the app | Saves `output/<experiment>_seed<seed>_step<step>.csv` and a matching `.png` |
+| `--headless --save-data run.csv --save-charts run.png` | Runs without a window, then saves both |
+| `python -m evoexperiment.charts run.csv` | Opens a saved CSV file in a chart window |
+| `python -m evoexperiment.charts run.csv --save run.png` | Turns a saved CSV file into an image |
+
+For example:
+
+```bash
+PYTHONPATH=src python -m evoexperiment.main --experiment scarce_food --seed 1 \
+    --headless --steps 15000 --save-data output/scarce.csv --save-charts output/scarce.png
+```
+
+**Why the simulation stays smooth.** The chart window runs as a separate program. About once a
+second, the app writes its measurements to `output/live_history.csv`, and only when there is
+something new. The chart window re-reads that file every 2 seconds. Redrawing eight charts takes
+about half a second, but that happens in the other program, so the simulation never waits for it.
+You can zoom and pan in the chart window. A zoom resets when new data arrives, so pause the
+simulation (Space) to study a chart closely. Pressing R, N, or 1–6 starts a new history, and the
+chart window switches to it automatically.
+
+All data stays on your computer in the `output/` folder, which is excluded from git.
+
+### How to read the charts
+
+The figure has eight panels that share the same horizontal axis (simulation steps). Each measure
+has its own panel and y-axis, because the measures use different units. The newest value is
+written beside the end of each line.
+
+On the four **trait panels**, the dark line is the average across living organisms. The
+**shaded band** spans one standard deviation above and below it, which shows how much individuals
+differ. The y-axis covers the trait's full allowed range, so you can see how close the population
+is to its limits.
+
+**Example: the default experiment, seed 42** (the chart above):
+
+- **Living population** rises from 20 to about 35 within the first 1,000 steps, then fluctuates
+  between about 25 and 45. That level is the **carrying capacity**: the number of organisms the
+  food supply can support. It is far below `max_population` (150), so food, not the cap, limits
+  the population.
+- **Food available** falls from 40 to about 10 and stays low. Food is eaten almost as fast as it
+  appears, which confirms the population is food-limited. If this line climbs back up while the
+  population falls, organisms are dying for some reason other than hunger (for example, old age).
+- **Births and deaths** rise as two nearly parallel lines. The gap between them is always the
+  population minus the 20 starting organisms, so parallel lines mean a stable population. The
+  slope shows **turnover**: here about 25 births per 1,000 steps.
+- **Highest generation** climbs in steps, reaching 20 by step 15,000, roughly one new generation
+  every 750 steps.
+- **Average speed** climbs from 1.82 to about 2.9 and levels off against the maximum of 3.0, while
+  the band narrows. This is **directional selection**: faster organisms leave more offspring. The
+  narrowing band shows that variation is being used up, because almost everyone is now fast.
+- **Average energy efficiency** jumps from 0.90 to about 1.27 in the first 2,000 steps, then
+  creeps up to 1.44. The early jump is mostly the least efficient starting organisms starving
+  before they could reproduce. The slow climb afterward is mutation and selection working
+  generation by generation.
+- **Average vision** rises from about 80 to 110, then drifts back toward 100 with a wide band.
+  Selection on vision is weaker than on speed, so random drift has more effect.
+- **Average energy** drops from 100 to about 70–80 and stays there, well below the reproduction
+  threshold of 150. Most organisms are hungry most of the time, and only the few that reach 150
+  reproduce. The wide band means energy differs a lot between individuals.
+
+**Comparing experiments.** Save charts for two experiments with the same seed and compare
+the same panel:
+
+- In `abundant_food`, the population panel levels off near 115, and the **vision** line falls
+  instead of rising. Once food is everywhere, good eyesight stops paying off.
+- In `scarce_food`, the population levels off at about 11–19, and vision ends higher than in the
+  default run. Surprisingly, the food line stays around 10, about the same as the default run,
+  even though food appears less than half as often. The population shrinks until the survivors
+  eat food about as fast as it appears. The difference shows up in the population panel, not the
+  food panel.
+- In `no_mutation`, the speed band shrinks until it disappears (a standard deviation of exactly 0
+  on seeds 42 and 7). Every living organism is then descended from the same starting ancestor. The
+  line flattens below 3.0 (at 2.4–2.75), because without new variation the population can only
+  become as fast as its best starting organism.
+- If a population dies out, every line stops at that step, and the population panel says
+  "Died out at step …". A food line climbing back toward `max_food` afterward confirms nothing is
+  left to eat it.
+
+**Reading the charts carefully**
+
+- **The band is not a margin of error.** It shows how much individual organisms differ, not how
+  certain the average is.
+- **One run is one sample.** With about 35 organisms, chance plays a big role. Before concluding
+  that a setting causes an effect, check that the pattern repeats across several seeds.
+- **The first measurements are noisy.** The starting population is random, and the first few
+  hundred steps are mostly the starting organisms adjusting to the environment.
+- **A flat line at a trait's limit** doesn't mean evolution stopped. It means the trait hit the
+  range in `settings.py` (see [Limitations](#limitations-of-this-simplified-model)).
+
 ## Reproducible Experiments
 
 The `Simulation` class takes a `seed`. Every random choice (starting positions, traits, food
@@ -475,7 +615,7 @@ The app's default seed and population size are set in `src/evoexperiment/setting
 
 - [Python](https://www.python.org/)
 - [Pygame](https://www.pygame.org/): graphics and the window
-- [Matplotlib](https://matplotlib.org/): charts (planned)
+- [Matplotlib](https://matplotlib.org/): charts
 - [pytest](https://docs.pytest.org/): automated tests
 
 ## Roadmap
@@ -487,4 +627,4 @@ The app's default seed and population size are set in `src/evoexperiment/setting
 - [x] Reproduction and inherited traits
 - [x] Mutation over generations
 - [x] Adjustable environmental conditions for experiments
-- [ ] Population charts with Matplotlib
+- [x] Population charts with Matplotlib

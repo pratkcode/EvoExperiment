@@ -193,6 +193,14 @@ class ExperimentConfig:
         """
         return Simulation(world_width=world_width, world_height=world_height, **self.to_dict())
 
+    def chart_title(self):
+        """A short title for charts and saved files, like 'EvoExperiment — default · seed 42'."""
+        return f"EvoExperiment — {self.name} · seed {self.seed}"
+
+    def file_name(self, step):
+        """A file name (without extension) that says what was saved, like 'default_seed42_step3000'."""
+        return f"{self.name}_seed{self.seed}_step{step}"
+
     def describe(self):
         """Return a multi-line, human-readable summary of the settings."""
         lines = [f"Experiment: {self.name}"]
@@ -268,13 +276,14 @@ def summarize(simulation):
     }
     for trait_name in TRAIT_NAMES:
         summary[f"avg_{trait_name}"] = simulation.get_average_trait(trait_name)
+    summary["avg_energy"] = simulation.get_average_trait("energy")
     return summary
 
 
-def run_experiment(config, steps):
+def run_simulation(config, steps):
     """
     Create a simulation from config, advance it `steps` times, and return
-    a summary of the results. Same config + same steps = same summary.
+    the simulation itself (including its statistics history in .stats).
     """
     if not _is_whole_number(steps) or steps < 0:
         raise ValueError(f"steps must be a whole number of 0 or more, got {steps!r}")
@@ -282,4 +291,12 @@ def run_experiment(config, steps):
     simulation = config.create_simulation()
     for _ in range(steps):
         simulation.step()
-    return summarize(simulation)
+    return simulation
+
+
+def run_experiment(config, steps):
+    """
+    Create a simulation from config, advance it `steps` times, and return
+    a summary of the results. Same config + same steps = same summary.
+    """
+    return summarize(run_simulation(config, steps))

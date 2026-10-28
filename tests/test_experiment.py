@@ -301,3 +301,17 @@ def test_headless_report_shows_settings_and_results():
     assert "Experiment: test_run" in report
     assert "food_spawn_chance" in report
     assert "steps                  100" in report
+
+
+def test_headless_run_saves_data_and_charts(tmp_path):
+    data_path = tmp_path / "data.csv"
+    chart_path = tmp_path / "charts.png"
+    report = run_headless(ExperimentConfig(seed=2), 300, str(data_path), str(chart_path))
+    assert data_path.exists() and chart_path.exists()
+    assert "Saved data" in report and "Saved charts" in report
+
+
+def test_save_options_are_parsed():
+    arguments = build_parser().parse_args(["--headless", "--save-data", "a.csv", "--save-charts", "b.png"])
+    assert arguments.save_data == "a.csv"
+    assert arguments.save_charts == "b.png"

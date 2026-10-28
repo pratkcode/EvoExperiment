@@ -72,3 +72,9 @@ MAX_POPULATION = 150              # Hard limit on the number of living organisms
 # --- Mutation ---
 MUTATION_PROBABILITY = 0.2   # Chance (0 to 1) that each trait mutates in a newborn
 MUTATION_STRENGTH = 0.1      # Size of a typical mutation, as a fraction of the trait's range
+
+# --- Statistics and charts ---
+STATS_INTERVAL = 30           # Record one measurement every this many simulation steps
+OUTPUT_FOLDER = "output"      # Where saved data and charts go (ignored by git)
+CHART_REFRESH_SECONDS = 2     # How often the live chart window re-reads the data
+LIVE_EXPORT_SECONDS = 1       # How often the app writes data for the live chart window

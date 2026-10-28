@@ -10,7 +10,8 @@ This file must NOT import pygame, so it can be tested and used on its own.
 import argparse
 
 from evoexperiment import settings
-from evoexperiment.experiment import PRESET_NAMES, make_preset, run_experiment
+from evoexperiment.experiment import PRESET_NAMES, make_preset, run_simulation, summarize
+from evoexperiment.stats import save_csv
 
 # Each command-line option that changes a setting:
 #   (option name, setting name, type, help text)
@@ -66,6 +67,18 @@ def build_parser():
         default=10000,
         help="how many steps to run in --headless mode (default: 10000)",
     )
+    parser.add_argument(
+        "--save-data",
+        metavar="CSV_FILE",
+        default=None,
+        help="in --headless mode, save the measurements to this CSV file",
+    )
+    parser.add_argument(
+        "--save-charts",
+        metavar="IMAGE_FILE",
+        default=None,
+        help="in --headless mode, save the charts to this image (.png, .svg, or .pdf)",
+    )
     return parser
 
 
@@ -112,7 +125,21 @@ def format_summary(summary):
     return "\n".join(lines)
 
 
-def run_headless(config, steps):
-    """Run an experiment without a window and return the printed report."""
-    summary = run_experiment(config, steps)
-    return config.describe() + "\n" + format_summary(summary)
+def run_headless(config, steps, data_path=None, chart_path=None):
+    """
+    Run an experiment without a window and return the printed report.
+    Optionally save the measurements (CSV) and the charts (image).
+    """
+    simulation = run_simulation(config, steps)
+    report = config.describe() + "\n" + format_summary(summarize(simulation))
+
+    if data_path is not None:
+        save_csv(simulation.stats.rows, data_path, config.chart_title())
+        report += f"\nSaved data to {data_path}"
+    if chart_path is not None:
+        # Imported here so that runs without charts don't need to load Matplotlib.
+        from evoexperiment.charts import save_chart_image
+
+        save_chart_image(simulation.stats.rows, chart_path, config.chart_title())
+        report += f"\nSaved charts to {chart_path}"
+    return report

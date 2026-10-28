@@ -11,6 +11,7 @@ import random
 
 from evoexperiment import settings
 from evoexperiment.food import Food
+from evoexperiment.stats import StatsHistory
 from evoexperiment.genetics import TRAIT_NAMES, clamp, inherit_traits
 from evoexperiment.organism import (
     Organism,
@@ -58,6 +59,7 @@ class Simulation:
         mutation_probability=settings.MUTATION_PROBABILITY,
         mutation_strength=settings.MUTATION_STRENGTH,
         max_population=settings.MAX_POPULATION,
+        stats_interval=settings.STATS_INTERVAL,
     ):
         # --- Check the settings before using them ---
         if population_size < 0:
@@ -162,6 +164,11 @@ class Simulation:
         self.food = []
         for _ in range(initial_food_count):
             self.spawn_random_food()
+
+        # Measurements over time, taken every `stats_interval` steps.
+        # Recording only reads the world, so it never changes the outcome.
+        self.stats = StatsHistory(stats_interval)
+        self.stats.record_if_due(self)  # Measure the starting state (step 0)
 
     # ------------------------------------------------------------------
     # Setup helpers
@@ -282,6 +289,7 @@ class Simulation:
           1. Maybe spawn new food.
           2. Update each living organism, in ID order (this may add newborns).
           3. Remove organisms that died.
+          4. Record statistics, if this step is due for a measurement.
 
         Newborns are added to the end of the list. They don't act until the next step.
         """
@@ -297,6 +305,7 @@ class Simulation:
                 self.update_organism(organism)
 
         self.remove_dead_organisms()
+        self.stats.record_if_due(self)
 
     def update_organism(self, organism):
         """

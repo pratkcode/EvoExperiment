@@ -4,7 +4,8 @@ Entry point for EvoExperiment.
 Opens a Pygame window and runs the ecosystem. This file only handles the
 window, keyboard input, and the main loop. The rules are in simulation.py,
 the experiment settings are in experiment.py, command-line options are in
-cli.py, and the drawing is in renderer.py.
+cli.py, the drawing is in renderer.py, statistics are in stats.py, and
+charts are in charts.py (opened through chart_link.py).
 
 Run it from the project folder with:  python -m evoexperiment.main
 Add --help to see every option (see README.md for the full command).
@@ -12,6 +13,7 @@ Add --help to see every option (see README.md for the full command).
 
 import os
 import sys
+import time
 import warnings
 
 # Keep the terminal output clean: hide Pygame's welcome message and a
@@ -22,6 +24,7 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated", categor
 import pygame  # noqa: E402  (must come after the lines above)
 
 from evoexperiment import settings
+from evoexperiment.chart_link import LiveChartLink, save_snapshot
 from evoexperiment.cli import build_parser, config_from_arguments, run_headless
 from evoexperiment.experiment import PRESET_NAMES, make_preset
 from evoexperiment.renderer import draw_world
@@ -49,6 +52,11 @@ def run_window(config):
     paused = False
     show_vision = False
     steps_per_frame = 1  # Press F to switch between normal and fast-forward
+    chart_link = LiveChartLink()
+
+    # A short message shown on screen (for example, after saving).
+    message = None
+    message_until = 0.0
 
     running = True
     while running:
@@ -81,6 +89,16 @@ def run_window(config):
                     if index < len(PRESET_NAMES):
                         config = make_preset(PRESET_NAMES[index], seed=config.seed)
                         simulation = start_experiment(config)
+                elif event.key == pygame.K_c:
+                    # Open the live chart window (a separate program, so no freezing).
+                    chart_link.open_window(simulation, config.chart_title(), time.time())
+                    message = "Opening live charts in a separate window..."
+                    message_until = time.time() + 4
+                elif event.key == pygame.K_s:
+                    csv_path, png_path = save_snapshot(simulation, config)
+                    print(f"Saved data to {csv_path} and charts to {png_path}")
+                    message = f"Saved {csv_path} (+ .png)"
+                    message_until = time.time() + 4
 
         # 2. Update the simulation. Fast-forward runs several steps per frame.
         #    The results are identical either way; only the drawing is skipped.
@@ -88,11 +106,19 @@ def run_window(config):
             for _ in range(steps_per_frame):
                 simulation.step()
 
-        # 3. Draw everything.
-        draw_world(screen, font, simulation, show_vision, paused, steps_per_frame, config.name)
+        # 3. Send new measurements to the chart window, if it is open.
+        #    (At most once per second, and only when something changed.)
+        chart_link.update(simulation, config.chart_title(), time.time())
+
+        # 4. Draw everything.
+        if time.time() > message_until:
+            message = None
+        draw_world(
+            screen, font, simulation, show_vision, paused, steps_per_frame, config.name, message
+        )
         pygame.display.flip()
 
-        # 4. Limit the frame rate.
+        # 5. Limit the frame rate.
         clock.tick(settings.FPS)
 
     pygame.quit()
@@ -109,7 +135,7 @@ def main(argv=None):
         parser.error(str(error))  # Prints the message and exits
 
     if arguments.headless:
-        print(run_headless(config, arguments.steps))
+        print(run_headless(config, arguments.steps, arguments.save_data, arguments.save_charts))
     else:
         run_window(config)
 

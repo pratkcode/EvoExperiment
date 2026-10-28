@@ -62,7 +62,9 @@ def format_trait_line(simulation, trait_name, label):
     return f"Avg {label}: {current_text}  (start {start_text})"
 
 
-def draw_hud(screen, font, simulation, paused, steps_per_frame=1, experiment_name="default"):
+def draw_hud(
+    screen, font, simulation, paused, steps_per_frame=1, experiment_name="default", message=None
+):
     """Draw the information text in the top-left corner."""
     lines = [
         f"Experiment: {experiment_name}   Seed: {simulation.seed}",
@@ -76,11 +78,14 @@ def draw_hud(screen, font, simulation, paused, steps_per_frame=1, experiment_nam
         format_trait_line(simulation, "energy_efficiency", "efficiency"),
         "Space: pause  F: fast  V: vision  Esc: quit",
         "R: repeat run  N: new seed  1-6: change experiment",
+        "C: live charts  S: save data + charts",
     ]
     if paused:
         lines.append("PAUSED")
     if simulation.get_population_count() == 0:
         lines.append("All organisms have died. Press R to repeat or N for a new seed.")
+    if message is not None:
+        lines.append(message)
 
     y = 8
     for line in lines:
@@ -97,6 +102,7 @@ def draw_world(
     paused=False,
     steps_per_frame=1,
     experiment_name="default",
+    message=None,
 ):
     """Draw the whole frame: background, food, organisms, then the text on top."""
     screen.fill(settings.BACKGROUND_COLOR)
@@ -107,4 +113,4 @@ def draw_world(
     for organism in simulation.organisms:
         draw_organism(screen, organism, show_vision)
 
-    draw_hud(screen, font, simulation, paused, steps_per_frame, experiment_name)
+    draw_hud(screen, font, simulation, paused, steps_per_frame, experiment_name, message)
